@@ -1,4 +1,4 @@
-PRECISION-LVAD public code :computer :heart :microscope
+PRECISION-LVAD public code :computer: :heart: :microscope:
 ==============================
 Topic: PRECISION-LVAD: Monitoring pump parameters to detect major bleeding and cardiac arrhythmia events: A proof-of-concept 
 Link to the paper: <doi> 
@@ -8,25 +8,28 @@ or
 `
 
 ### Aim of the project
-
-
+------------
+<>
 
 ### Prerequisites
+------------
 Please donwload the repository or clone it through your terminal:
 
 `git clone https://github.com/Mehranmzn/PRECISION-LVAD`
 
 
 ### Step-by-step
+------------
 A guidance to how to use the PRECISION-LVAD is provided in `Rcode/Tutorial` folder
 using `learnr` package. With this, you can run the rmarkdown file in the folder and interact 
 with PREICSION-LVAD live. 
-------------
+
 
 ### Liscense
+------------
 This project is licensed under the MIT License - see the [LICENSE.md](https://opensource.org/license/mit/) 
 file for details
-------------
+
 
 
 Project Organization
