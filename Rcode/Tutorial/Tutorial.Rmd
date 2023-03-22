@@ -1,0 +1,403 @@
+---
+title: "Tutorial of PRECISION-LVAD!"
+output: learnr::tutorial
+# progressive: true
+# allow_skip: true
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(qcc)
+library(dplyr)
+library(lme4)
+library(utils)
+library(readxl)
+tutorial_options(
+  exercise.timelimit = 60,
+  # A simple checker function that just returns the message in the check chunk
+  exercise.checker = function(check_code, ...) {
+    list(
+      message = eval(parse(text = check_code)),
+      correct = logical(0),
+      type = "info",
+      location = "append"
+    )
+  }
+)
+knitr::opts_chunk$set(error = TRUE)
+
+
+patient_specific_residual<-  function(variable_name, df_all_patient){
+  
+  
+  # This function takes a variable name and a data frame containing all patient data 
+  # and returns a data frame containing residuals for each patient. 
+  
+  # Arguments:
+  # variable_name: the name of the variable for which residuals are to be calculated.
+  # df_all_patient: the data frame containing all patient data.
+  
+  
+  
+  # Find all unique patient IDs in the data frame.
+  u= sort(unique(df_all_patient$ID))
+  
+  # Create an empty data frame to store residuals for all patients.
+  df_contain_resid_all_patient<-data.frame()
+  
+  # Loop through all patients.
+  for(k in 1:length(u)){
+    
+    # Subset the data frame to contain only data for the current patient.
+    df_patient<- df_all_patient[df_all_patient$ID==u[k],]
+    
+    # Subset the admission file to contain only admission data for the current patient.
+    patient_admission<- admission_file[admission_file$ID==u[k] ,]
+    
+    # Find all dates on which the stored speed value changed for the current patient.
+    dates_speed_changed<- sort(df[which(df_patient$Stored_speed != lag(df_patient$Stored_speed)),]$Datetime)
+    
+    # If the stored speed value never changed, use only admission dates as events.
+    if (length(dates_speed_changed)!=0) {
+      events<- sort(unique(patient_admission$admission_date), 
+                    unique(dates_speed_changed))
+    }else{
+      events<- unique(patient_admission$admission_date)
+    }
+    
+    # Create an empty data frame to store residuals for the current patient.
+    residuals<- data.frame()
+    
+    # Get the total number of observations for the current patient.
+    number_of_obs<-nrow(df_patient)
+    
+    # If there are no events for the current patient, skip to the next patient.
+    if (length(events)==0) {
+      next
+    }else{
+      
+      # If there are multiple events for the current patient, calculate residuals 
+      # for each event.
+      if (length(events)>1) {
+        
+        # Find the index of the last observation before the first event.
+        calibration_index<- max(which(df_patient$Datetime < events[1]))
+        
+        # Subset the data frame to contain only observations before the first event.
+        calibration_obs<- df_patient[1:calibration_index,]
+        
+        # Calculate residuals for the first event.
+        residuals<- mean_estimator_ind_patient(df = calibration_obs, 
+                                               df_normal = pws_patient, 
+                                               variable_name = variable_name)
+        
+        # Create an empty data frame to store residuals for the current event.
+        residuals_temporal<- residuals_temporal[(1:(nrow(calibration_obs))),]
+        
+        # Loop through all events except for the first one.
+        for (t in 2:length(events)) {
+          
+          # Find the indices of the observations between the current and previous event.
+          i<- max(which(df_patient$Datetime <= events[t]))
+          j<- max(which(df_patient$Datetime <= events[t-1]))
+          
+          # Subset the data frame to contain only observations between the current and previous event.
+          calibration_obs<- df_patient[(j+1):i,]
+          
+          # Calculate residuals for the current event.
+          residuals_temporal<- mean_estimator_ind_patient(df = calibration_obs, 
+                                                          df_normal = pws_patient, 
+                                                          variable_name = variable_name)
+          
+          # Create an empty data frame to store residuals for the current event.
+          residuals_temporal<- residuals_temporal[(1:(nrow(calibration_obs))),]
+          
+          # Add the residuals for the current event to the residuals
+          
+          residuals<- rbind(residuals, residuals_temporal)
+        }  
+        
+        
+        
+        number_of_resid<- nrow(residuals)
+        
+        
+        if (number_of_resid < number_of_obs) {
+          
+          calibration_obs<- df_patient[(number_of_res+1):number_of_obs,]
+          
+          residuals_temporal<-  mean_estimator_ind_patient(df = calibration_obs, 
+                                                           df_normal = pws_patient, 
+                                                           variable_name = variable_name)
+          
+          residuals_temporal<- residuals_temporal[(1:(nrow(calibration_obs))),]
+          residuals<- rbind(residuals, residuals_temporal)
+          
+          
+        }
+        
+        
+        
+      }else{
+        calibration_index<- max(which(df_patient$Datetime < events[1]))
+        
+        calibration_obs<- df_patient[1:calibration_index,]
+        
+        residuals_temporal<- mean_estimator_ind_patient(df = calibration_obs, 
+                                                        df_normal = pws_patient, 
+                                                        variable_name = variable_name)
+        
+        
+        
+        residuals<- rbind(residuals, residuals_temporal)
+        
+        
+        number_of_res<- nrow(residuals)
+        
+        if (number_of_res < number_of_obs) {
+          
+          
+          calibration_obs<- df_patient[(number_of_res+1):number_of_obs,]
+          
+          
+          residuals_temporal<- mean_estimator_ind_patient(df = calibration_obs, 
+                                                          df_normal = pws_patient, 
+                                                          variable_name = variable_name)
+          
+          
+          residuals_temporal<- residuals_temporal[(1:(nrow(calibration_obs))),]
+          
+          residuals<- rbind(residuals, residuals_temporal)
+          
+          
+          
+          
+        }
+        
+        
+        
+      }
+    }
+    
+    
+    
+    
+    
+    df_patient<- cbind(df_patient, residuals)
+    
+    
+    
+    
+    df_contain_resid_all_patient<-rbind(df_contain_resid_all_patient, df_patient)
+    
+  }
+  
+  
+  return(df_contain_resid_all_patient)
+  
+  
+}
+mean_estimator_ind_patient<- function(df,
+                                      df_normal,
+                                      variable_name){
+  
+  df$calibrated_resid<-0
+  iter<-180
+  kl<-nrow(df)
+  
+  if (iter> kl) {
+    iter<-kl
+  }
+  
+  bank_data<- df_normal %>%group_by(ID)%>%slice(1:28)
+  bank_data$Datetime<- as.Date(bank_data$Datetime)
+  bank_data$calibrated_resid<-0
+  bank_data$mean_estimation<-0
+  df$mean_estimation<-0
+  online_mean<-data.frame()
+  
+  patient_num = df$ID[1]
+  if (variable_name == "Flow") {
+    
+    
+    for (j in 1:(iter)) {
+      
+      a<- df[1:j,]
+      
+      new_df<-data.frame()
+      new_df<- rbind(bank_data, a)
+      
+      
+      
+      
+      
+      
+      new_model<- lmer(Flow ~  (1 + norm_speed |ID) + HCT 
+                       , data = new_df, REML = F, 
+                       control = lmerControl(optimizer ="bobyqa", calc.derivs = F))
+      
+      
+      the_estimated_mean<- 
+        coef(new_model)$ID[which( row.names(coef(new_model)$ID)==patient_num),3]* a$HCT+
+        a$norm_speed *coef(new_model)$ID[which( row.names(coef(new_model)$ID)==patient_num),1]+
+        coef(new_model)$ID[which( row.names(coef(new_model)$ID)==patient_num),2]
+      
+      
+      online_mean<- rbind(online_mean, the_estimated_mean)
+      
+      df[j,"calibrated_resid"]<- as.numeric(df$Flow[j]- online_mean[j,1])
+      df[j,"mean_estimation"]<-  online_mean[j,1]
+      
+      
+    }
+    
+    if (kl>iter) {
+      df[((iter+1): kl), "calibrated_resid"]<- df[((iter+1):kl), "Flow"] - online_mean[iter,1]
+      df[((iter+1): kl), "mean_estimation"]<- online_mean[iter,1]
+    }
+    
+    
+    df$sigma<-0
+    
+    for (s in 1:iter) {
+      
+      df$sigma[s]<- sqrt(var(df[1:s,"calibrated_resid"])[1])
+      
+      
+    }
+    df$sigma[1]<-2
+    
+    if (kl>iter) {
+      df[((iter+1): kl), "sigma"]<- df[iter,"sigma"]
+    }
+    
+  }else if(variable_name == "Motor_power"){
+    for (j in 1:(iter)) {
+      
+      a<- df[1:j,]
+      
+      new_df<- rbind(bank_data, a)
+      
+      new_model<- lmer(Motor_power ~  (1 + norm_speed |ID) 
+                       
+                       , data = new_df, REML = F, 
+                       control = lmerControl(optimizer ="bobyqa", calc.derivs = F))
+      
+      
+      the_estimated_mean<- coef(new_model)$ID[which( row.names(coef(new_model)$ID)==patient_num),2]+
+        a$norm_speed *coef(new_model)$ID[which( row.names(coef(new_model)$ID)==patient_num),1]
+      
+      
+      online_mean<- rbind(online_mean, the_estimated_mean)
+      
+      df[j,"calibrated_resid"]<- as.numeric(df$Motor_power[j]- online_mean[j,1])
+      df[j,"mean_estimation"]<-  online_mean[j,1]
+      
+      
+    }
+    df[((iter+1): kl), "calibrated_resid"]<- df[((iter+1):kl), "Motor_power"] - online_mean[iter,1]
+    df[((iter+1): kl), "mean_estimation"]<- online_mean[iter,1]
+    
+    df$sigma<-0
+    
+    for (s in 1:iter) {
+      
+      df$sigma[s]<- sqrt(var(df[1:s,"calibrated_resid"])[1])
+      
+      
+    }
+    df$sigma[1]<-2
+    df[((iter+1): kl), "sigma"]<- df[iter,"sigma"]
+    
+    
+  }
+  
+  
+  
+  df$updated<-0
+  df$updated[1]<-1
+  control_limits<- data.frame(lcl = rep(0, iter), ucl = rep(0,iter), mean_estimate = rep(0, iter))
+  
+  
+  
+  return(df[, c("calibrated_resid", "mean_estimation","sigma", "updated")])
+}
+
+
+```
+
+## Welcome
+
+Welcome to PRECISION-LVAD tutorial!In this tutorial, we'll be learning :
+
+* Load datasets
+* Fit personalized model on each pump parameter based on `PRECISION-LVAD` engine
+* Get `Out-of-control` points for each time-point
+* Evaluate the results
+
+This srepository is linked to our new paper entitled:[paper](http://www.exmaple.com)
+
+### Prerequisites
+To run the PRECISION-LVAD algorithm you need to install below packages:
+
+* `dplyr`
+* `Lme4`
+* `qcc`
+
+
+
+
+## Load data
+```{r, filter1, exercise = TRUE, exercise.setup= "one"}
+
+
+# loading the datasets:
+df_all_patient<-readr::read_csv("data/syn_data_CA.csv")
+head(df_all_patient)
+```
+
+```{r, filter2, exercise = TRUE, exercise.setup= "one"}
+
+
+# loading the datasets:
+df_all_patient<-readr::read_csv("data/syn_data_MB.csv")
+head(df_all_patient)
+```
+
+
+```{r, filter3, exercise = TRUE, exercise.setup= "one"}
+
+
+# loading the datasets:
+admission_file<-readr::read_csv("data/admission_file.csv")
+head(admission_file)
+```
+
+```{r, filter4, exercise = TRUE, exercise.setup= "one"}
+
+
+# loading the datasets:
+pws_patient<-readr::read_csv("data/stable_patient.csv")
+head(pws_patient)
+```
+
+```{r, filter5, exercise = TRUE, exercise.setup= "one"}
+df_all_patient$Datetime<- as.Date(df_all_patient$Datetime)
+pws_patient$Datetime<- as.Date(pws_patient$Datetime)
+```
+
+
+## Fit PRECISION-LVAD on the data
+
+```{r, filter6, exercise = TRUE, exercise.setup= "one"}
+
+df<-patient_specific_residual(variable_name = "Flow",
+                              df_all_patient = df_all_patient)
+
+head(df)
+```
+## Obtain Out-of-control points with PRECISION-LVAD
+
+## Evaluate
+
