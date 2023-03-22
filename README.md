@@ -10,12 +10,12 @@ or
 ### Aim of the project
 
 
-------------
+
 ### Prerequisites
 Please donwload the repository or clone it through your terminal:
 
 `git clone https://github.com/Mehranmzn/PRECISION-LVAD`
-------------
+
 
 ### Step-by-step
 A guidance to how to use the PRECISION-LVAD is provided in `Rcode/Tutorial` folder
